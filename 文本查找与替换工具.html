@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线文本查找与替换工具</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --bg-color: #f4f6f9;
+            --container-bg: #ffffff;
+            --text-color: #333;
+            --border-color: #ddd;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: var(--container-bg);
+            width: 100%;
+            max-width: 900px;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 30px;
+        }
+
+        /* 文件上传区域 */
+        .file-upload {
+            border: 2px dashed var(--border-color);
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+        .file-upload:hover {
+            border-color: var(--primary-color);
+        }
+
+        /* 输入输出区域布局 */
+        .editor-area {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            resize: vertical;
+            font-family: 'Consolas', 'Monaco', monospace; /* 等宽字体适合代码/文本 */
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        /* 查找替换控制区 */
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        /* 按钮样式 */
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            color: white;
+        }
+
+        .btn-find { background-color: #17a2b8; }
+        .btn-find:hover { background-color: #138496; }
+
+        .btn-replace { background-color: #ffc107; color: #333; }
+        .btn-replace:hover { background-color: #e0a800; }
+
+        .btn-replace-all { background-color: #dc3545; }
+        .btn-replace-all:hover { background-color: #c82333; }
+
+        .btn-action { background-color: var(--primary-color); }
+        .btn-action:hover { background-color: var(--primary-hover); }
+
+        .btn-secondary { background-color: #6c757d; }
+        .btn-secondary:hover { background-color: #5a6268; }
+
+        /* 统计信息 */
+        .stats {
+            text-align: right;
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .editor-area {
+                flex-direction: column;
+            }
+            .control-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>文本查找与替换工具</h1>
+
+    <!-- 文件上传 -->
+    <div class="file-upload">
+        <input type="file" id="fileInput" accept=".txt,.html,.css,.js,.json,.md,.csv">
+        <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">支持上传文本文件，或直接在下方的输入框粘贴内容</p>
+    </div>
+
+    <div class="editor-area">
+        <!-- 原始内容输入 -->
+        <div class="input-group">
+            <label for="sourceText">原始内容</label>
+            <textarea id="sourceText" placeholder="请在此处粘贴文本..."></textarea>
+        </div>
+        
+        <!-- 替换结果输出 -->
+        <div class="input-group">
+            <label for="resultText">替换结果</label>
+            <textarea id="resultText" placeholder="结果将显示在这里..."></textarea>
+        </div>
+    </div>
+
+    <!-- 查找替换控制 -->
+    <div class="controls">
+        <div class="control-row">
+            <input type="text" id="searchInput" placeholder="查找内容">
+            <input type="text" id="replaceInput" placeholder="替换为">
+        </div>
+        
+        <div class="control-row">
+            <button class="btn-find" onclick="findText()">查找 (统计数量)</button>
+            <button class="btn-replace" onclick="replaceNext()">替换下一个</button>
+            <button class="btn-replace-all" onclick="replaceAll()">一键全部替换</button>
+        </div>
+
+        <div class="stats" id="statsDisplay">等待操作...</div>
+    </div>
+
+    <!-- 输出操作 -->
+    <div class="control-row" style="justify-content: flex-end;">
+        <button class="btn-secondary" onclick="copyResult()">复制到剪贴板</button>
+        <button class="btn-action" onclick="downloadFile()">下载文件</button>
+    </div>
+</div>
+
+<script>
+    const sourceText = document.getElementById('sourceText');
+    const resultText = document.getElementById('resultText');
+    const fileInput = document.getElementById('fileInput');
+    const searchInput = document.getElementById('searchInput');
+    const replaceInput = document.getElementById('replaceInput');
+    const statsDisplay = document.getElementById('statsDisplay');
+
+    // 1. 文件上传处理
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            sourceText.value = e.target.result;
+            resultText.value = ''; // 清空结果
+            statsDisplay.textContent = '文件已加载，准备就绪。';
+        };
+        reader.readAsText(file);
+    });
+
+    // 2. 查找功能
+    function findText() {
+        const text = sourceText.value;
+        const searchStr = searchInput.value;
+
+        if (!searchStr) {
+            alert("请输入要查找的内容！");
+            return;
+        }
+
+        // 使用正则表达式全局匹配
+        // 注意：这里使用简单的字符串分割来计算数量，也可以改用正则
+        const regex = new RegExp(escapeRegExp(searchStr), 'g');
+        const count = (text.match(regex) || []).length;
+
+        statsDisplay.textContent = `共找到 ${count} 处匹配 "${searchStr}"`;
+        
+        // 高亮逻辑（简单模拟）：将原文本复制到结果框并高亮（如果需要预览高亮）
+        // 这里我们只在统计数字，不改变结果框内容，除非进行替换
+    }
+
+    // 3. 替换下一个
+    function replaceNext() {
+        const text = sourceText.value;
+        const searchStr = searchInput.value;
+        const replaceStr = replaceInput.value;
+
+        if (!searchStr) {
+            alert("请输入查找内容！");
+            return;
+        }
+
+        // 简单的替换第一个匹配项
+        // 如果 resultText 不为空，说明已经在处理中，应该在 resultText 的基础上替换
+        // 但为了逻辑简单，我们每次都基于 sourceText 进行单次替换演示
+        // 更复杂的逻辑需要维护一个“当前索引”，这里简化为：
+        // 如果结果框是空的，替换第一个；如果结果框有内容，说明是连续操作，这里简化处理，
+        // 直接演示“全部替换”逻辑中的单次版比较麻烦，
+        // 我们采用策略：每次点击“替换下一个”，其实是把 sourceText 中的第一个匹配项替换后放入 resultText。
+        
+        // 为了体验更好，我们检查 resultText 是否为空。
+        // 如果 resultText 为空，我们基于 sourceText 操作。
+        // 如果 resultText 不为空，我们基于 resultText 操作（模拟连续替换）。
+        
+        let currentText = resultText.value === '' ? text : resultText.value;
+        
+        // 查找并替换第一个出现的
+        const index = currentText.indexOf(searchStr);
+        if (index === -1) {
+            alert("没有找到更多匹配项，或已全部替换完毕。");
+            // 更新统计
+            statsDisplay.textContent = "没有更多匹配项。";
+            return;
+        }
+
+        // 替换第一个
+        const newText = currentText.replace(searchStr, replaceStr);
+        resultText.value = newText;
+        
+        // 更新统计
+        const remaining = (newText.match(new RegExp(escapeRegExp(searchStr), 'g')) || []).length;
+        statsDisplay.textContent = `已替换 1 处。剩余匹配: ${remaining}`;
+    }
+
+    // 4. 一键全部替换
+    function replaceAll() {
+        const text = sourceText.value;
+        const searchStr = searchInput.value;
+        const replaceStr = replaceInput.value;
+
+        if (!searchStr) {
+            alert("请输入查找内容！");
+            return;
+        }
+
+        // 全局替换
+        const regex = new RegExp(escapeRegExp(searchStr), 'g');
+        const newText = text.replace(regex, replaceStr);
+        
+        resultText.value = newText;
+        
+        statsDisplay.textContent = "全部替换完成！";
+    }
+
+    // 5. 复制到剪贴板
+    function copyResult() {
+        resultText.select();
+        document.execCommand('copy'); // 兼容性较好的方法
+        // 或者使用 navigator.clipboard.writeText(resultText.value);
+        alert("结果已复制到剪贴板！");
+    }
+
+    // 6. 下载文件
+    function downloadFile() {
+        const content = resultText.value;
+        if (!content) {
+            alert("结果为空，无法下载！");
+            return;
+        }
+
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'replaced_content.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // 辅助函数：转义正则特殊字符
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+    }
+</script>
+
+</body>
+</html>
