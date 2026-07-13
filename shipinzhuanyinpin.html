@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频转音频 · 本地处理</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "@ffmpeg/ffmpeg": "https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js",
+                "@ffmpeg/util": "https://unpkg.com/@ffmpeg/util@0.11.1/dist/esm/index.js"
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface-alt: #f1f5f9;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --border: #e2e8f0;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.25);
+            --success: #10b981;
+            --danger: #ef4444;
+            --danger-light: #fef2f2;
+            --radius: 16px;
+            --radius-lg: 20px;
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05);
+            --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .app-container { width: 100%; max-width: 580px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header .icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 56px; height: 56px; border-radius: 18px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff; font-size: 28px; margin-bottom: 12px;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
+        }
+        .header h1 { font-size: 1.75rem; font-weight: 700; }
+        .header p { font-size: 0.9rem; color: var(--text-secondary); margin-top: 4px; }
+        .card {
+            background: var(--surface); border-radius: var(--radius-lg);
+            padding: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border);
+        }
+        .upload-zone {
+            border: 2px dashed var(--border); border-radius: var(--radius);
+            padding: 40px 24px; text-align: center; cursor: pointer;
+            background: var(--surface-alt); transition: all var(--transition);
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+            user-select: none;
+        }
+        .upload-zone:hover, .upload-zone.drag-over {
+            border-color: var(--primary); background: #eef2ff;
+            box-shadow: 0 0 0 8px var(--primary-glow);
+        }
+        .upload-zone .upload-icon {
+            width: 64px; height: 64px; border-radius: 50%;
+            background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .upload-zone svg { width: 30px; height: 30px; color: var(--primary); }
+        .upload-zone:hover svg { color: #fff; }
+        .upload-zone:hover .upload-icon { background: var(--primary); }
+        .upload-text { font-weight: 600; font-size: 1.05rem; }
+        .upload-hint { font-size: 0.85rem; color: var(--text-muted); }
+
+        .file-card {
+            display: flex; align-items: center; gap: 14px; padding: 14px 16px;
+            background: var(--surface-alt); border-radius: var(--radius);
+            border: 1px solid var(--border); margin-top: 16px;
+        }
+        .file-card .icon { font-size: 32px; }
+        .file-info { flex: 1; min-width: 0; }
+        .file-info .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-info .meta { font-size: 0.8rem; color: var(--text-secondary); }
+        .remove-btn {
+            background: none; border: 1px solid var(--border); border-radius: 50%;
+            width: 32px; height: 32px; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; color: var(--text-muted);
+        }
+        .remove-btn:hover { background: var(--danger-light); border-color: #fecaca; color: var(--danger); }
+
+        .settings { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+        .setting { flex: 1; min-width: 130px; }
+        .setting label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; }
+        .setting select {
+            width: 100%; padding: 10px 14px; border-radius: 10px;
+            border: 1px solid var(--border); background: var(--surface);
+            font-size: 0.9rem; font-weight: 500; cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 12px center;
+        }
+
+        .btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            width: 100%; padding: 14px; border-radius: 12px; font-weight: 600;
+            font-size: 1rem; border: none; cursor: pointer; transition: all var(--transition);
+            font-family: inherit;
+        }
+        .btn-primary { background: linear-gradient(135deg, #6366f1, #5b21b6); color: #fff; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-download { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+        .progress { margin-top: 16px; }
+        .progress-bar { height: 8px; background: #e2e8f0; border-radius: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #6366f1, #8b5cf6); transition: width 0.3s; }
+        .progress-text { text-align: center; font-size: 0.8rem; color: var(--text-secondary); margin-top: 6px; }
+
+        .toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-120px);
+            background: #1e293b; color: #fff; padding: 12px 24px; border-radius: 30px;
+            font-weight: 500; z-index: 1000; transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.success { background: #065f46; }
+        .toast.error { background: #991b1b; }
+
+        .status { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; font-size: 0.78rem; color: var(--text-muted); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; }
+        .status-dot.loading { background: #f59e0b; animation: blink 1s infinite; }
+        .status-dot.ready { background: #10b981; }
+        @keyframes blink { 0%,100%{opacity:1;}50%{opacity:0.3;} }
+    </style>
+</head>
+<body>
+<div class="app-container">
+    <div class="header">
+        <div class="icon">🎵</div>
+        <h1>视频转音频</h1>
+        <p>免费 · 安全 · 浏览器本地完成</p>
+    </div>
+
+    <div class="card">
+        <!-- 上传区域 -->
+        <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </div>
+            <span class="upload-text">点击上传或拖拽视频文件</span>
+            <span class="upload-hint">MP4 / WebM / MOV / AVI / MKV … 最大 500MB</span>
+        </div>
+        <input type="file" id="fileInput" accept="video/*,.mkv,.avi,.mov,.flv,.wmv,.m4v,.3gp,.ogv,.ts,.mts,.m2ts,.vob,.divx,.xvid,.rmvb,.asf,.f4v" style="display:none;">
+
+        <!-- 文件信息卡片 (隐藏) -->
+        <div id="fileInfoSection" style="display:none;"></div>
+
+        <!-- 格式设置 (隐藏) -->
+        <div id="settingsSection" style="display:none;">
+            <div class="settings">
+                <div class="setting">
+                    <label for="audioFormat">输出格式</label>
+                    <select id="audioFormat">
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV 无损</option>
+                        <option value="aac">AAC (M4A)</option>
+                        <option value="ogg">OGG Vorbis</option>
+                        <option value="flac">FLAC 无损</option>
+                    </select>
+                </div>
+                <div class="setting" id="bitrateGroup">
+                    <label for="audioBitrate">比特率</label>
+                    <select id="audioBitrate">
+                        <option value="128k">128 kbps</option>
+                        <option value="192k" selected>192 kbps</option>
+                        <option value="256k">256 kbps</option>
+                        <option value="320k">320 kbps</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 转换按钮 (隐藏) -->
+        <div id="actionSection" style="display:none; margin-top:16px;">
+            <button class="btn btn-primary" id="convertBtn">
+                ▶️ 开始转换
+            </button>
+        </div>
+
+        <!-- 下载区域 (隐藏) -->
+        <div id="downloadSection" style="display:none; margin-top:16px;"></div>
+
+        <!-- 进度条 (隐藏) -->
+        <div class="progress" id="progressContainer" style="display:none;">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-text" id="progressText">准备中...</div>
+        </div>
+    </div>
+
+    <!-- 引擎状态 -->
+    <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">引擎未加载</span>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+    import { FFmpeg } from '@ffmpeg/ffmpeg';
+    import { fetchFile } from '@ffmpeg/util';
+
+    // ---------- DOM ----------
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfoSection = document.getElementById('fileInfoSection');
+    const settingsSection = document.getElementById('settingsSection');
+    const actionSection = document.getElementById('actionSection');
+    const downloadSection = document.getElementById('downloadSection');
+    const convertBtn = document.getElementById('convertBtn');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const audioFormat = document.getElementById('audioFormat');
+    const audioBitrate = document.getElementById('audioBitrate');
+    const bitrateGroup = document.getElementById('bitrateGroup');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const toast = document.getElementById('toast');
+
+    let selectedFile = null;
+    let ffmpeg = null;
+    let ffmpegReady = false;
+    let isConverting = false;
+
+    // ---------- Toast ----------
+    let toastTimer;
+    function showToast(msg, type = '') {
+        if (toastTimer) clearTimeout(toastTimer);
+        toast.textContent = msg;
+        toast.className = 'toast ' + type + ' show';
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    // ---------- 引擎加载 ----------
+    async function loadFFmpeg() {
+        if (ffmpegReady) return true;
+        statusDot.className = 'status-dot loading';
+        statusText.textContent = '正在加载转换引擎...';
+        try {
+            ffmpeg = new FFmpeg();
+            ffmpeg.setLogger(({ type, message }) => {
+                if (type === 'fferr' && message.includes('time=')) {
+                    const match = message.match(/time=(\d+):(\d+):(\d+\.\d+)/);
+                    if (match && selectedFile) {
+                        const h = parseInt(match[1]), m = parseInt(match[2]), s = parseFloat(match[3]);
+                        const current = h * 3600 + m * 60 + s;
+                        // 粗略进度
+                        const pct = Math.min(Math.round((current / (selectedFile.duration || 60)) * 100), 98);
+                        progressFill.style.width = pct + '%';
+                        progressText.textContent = `转换中 ${pct}%...`;
+                    }
+                }
+            });
+            await ffmpeg.load();
+            ffmpegReady = true;
+            statusDot.className = 'status-dot ready';
+            statusText.textContent = '引擎就绪';
+            return true;
+        } catch (err) {
+            console.error(err);
+            statusDot.className = 'status-dot';
+            statusText.textContent = '引擎加载失败，请确保使用 HTTP 服务器打开页面';
+            showToast('引擎加载失败，请检查网络或使用本地服务器打开', 'error');
+            return false;
+        }
+    }
+
+    // ---------- 工具函数 ----------
+    function formatSize(bytes) {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return (bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1) + ' ' + sizes[i];
+    }
+
+    // ---------- 处理文件选择 ----------
+    function handleFile(file) {
+        if (!file) return;
+
+        // 仅记录时长信息（通过 URL 方式快速获取）
+        selectedFile = file;
+        selectedFile.duration = null;
+
+        // 尝试获取视频时长
+        const url = URL.createObjectURL(file);
+        const audio = new Audio();
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+            selectedFile.duration = audio.duration;
+            URL.revokeObjectURL(url);
+        };
+        audio.onerror = () => {
+            URL.revokeObjectURL(url);
+        };
+        audio.src = url;
+
+        // 渲染文件卡片
+        fileInfoSection.innerHTML = `
+            <div class="file-card">
+                <span class="icon">🎬</span>
+                <div class="file-info">
+                    <div class="name" title="${file.name}">${file.name}</div>
+                    <div class="meta">📦 ${formatSize(file.size)}</div>
+                </div>
+                <button class="remove-btn" id="removeBtn">✕</button>
+            </div>
+        `;
+        fileInfoSection.style.display = 'block';
+        settingsSection.style.display = 'block';
+        actionSection.style.display = 'block';
+        downloadSection.style.display = 'none';
+        progressContainer.style.display = 'none';
+        uploadZone.style.display = 'none';
+        convertBtn.disabled = false;
+        convertBtn.textContent = '▶️ 开始转换';
+
+        document.getElementById('removeBtn').addEventListener('click', resetAll);
+        updateBitrateVisibility();
+    }
+
+    function resetAll() {
+        selectedFile = null;
+        fileInfoSection.style.display = 'none';
+        settingsSection.style.display = 'none';
+        actionSection.style.display = 'none';
+        downloadSection.style.display = 'none';
+        progressContainer.style.display = 'none';
+        uploadZone.style.display = '';
+        fileInput.value = '';
+    }
+
+    function updateBitrateVisibility() {
+        const fmt = audioFormat.value;
+        bitrateGroup.style.display = (fmt === 'wav' || fmt === 'flac') ? 'none' : '';
+    }
+
+    // ---------- 转换 ----------
+    async function convert() {
+        if (!selectedFile || isConverting) return;
+        if (!ffmpegReady) {
+            showToast('引擎未就绪，正在加载...', '');
+            const ok = await loadFFmpeg();
+            if (!ok) return;
+        }
+
+        isConverting = true;
+        convertBtn.disabled = true;
+        convertBtn.textContent = '⏳ 转换中...';
+        progressContainer.style.display = 'block';
+        progressFill.style.width = '5%';
+        progressText.textContent = '读取文件中...';
+
+        const format = audioFormat.value;
+        const bitrate = audioBitrate.value;
+        const inputName = 'input.' + (selectedFile.name.split('.').pop() || 'mp4');
+        const outputName = 'output.' + (format === 'aac' ? 'm4a' : format);
+
+        try {
+            const fileData = await fetchFile(selectedFile);
+            await ffmpeg.FS('writeFile', inputName, fileData);
+            progressFill.style.width = '10%';
+            progressText.textContent = '转换音频中...';
+
+            const args = ['-i', inputName, '-vn'];
+            switch (format) {
+                case 'mp3': args.push('-acodec', 'libmp3lame', '-b:a', bitrate); break;
+                case 'wav': args.push('-acodec', 'pcm_s16le'); break;
+                case 'aac': args.push('-acodec', 'aac', '-b:a', bitrate); break;
+                case 'ogg': args.push('-acodec', 'libvorbis', '-b:a', bitrate); break;
+                case 'flac': args.push('-acodec', 'flac'); break;
+            }
+            args.push('-y', outputName);
+
+            const start = Date.now();
+            await ffmpeg.run(...args);
+            const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+
+            const data = ffmpeg.FS('readFile', outputName);
+            const blob = new Blob([data.buffer], { type: getMimeType(format) });
+
+            // 清理虚拟文件
+            try { ffmpeg.FS('unlink', inputName); ffmpeg.FS('unlink', outputName); } catch (e) {}
+
+            progressFill.style.width = '100%';
+            progressText.textContent = `转换完成，耗时 ${elapsed} 秒`;
+            renderDownload(blob, outputName, format);
+            showToast('转换完成！', 'success');
+        } catch (err) {
+            console.error(err);
+            progressContainer.style.display = 'none';
+            showToast('转换失败，文件可能损坏或格式不兼容', 'error');
+            convertBtn.disabled = false;
+            convertBtn.textContent = '▶️ 重新转换';
+        } finally {
+            isConverting = false;
+        }
+    }
+
+    function getMimeType(fmt) {
+        return { mp3:'audio/mpeg', wav:'audio/wav', aac:'audio/mp4', ogg:'audio/ogg', flac:'audio/flac' }[fmt] || 'audio/mpeg';
+    }
+
+    function renderDownload(blob, fileName, format) {
+        const url = URL.createObjectURL(blob);
+        downloadSection.innerHTML = `
+            <button class="btn btn-download" id="downloadBtn">
+                ⬇️ 下载 ${format.toUpperCase()} (${formatSize(blob.size)})
+            </button>
+        `;
+        downloadSection.style.display = 'block';
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast('下载已开始', 'success');
+        });
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        convertBtn.disabled = false;
+        convertBtn.textContent = '▶️ 重新转换';
+    }
+
+    // ---------- 事件绑定 ----------
+    uploadZone.addEventListener('click', () => {
+        if (!isConverting) fileInput.click();
+    });
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    // 拖拽
+    uploadZone.addEventListener('dragover', (e) => e.preventDefault());
+    uploadZone.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        if (!isConverting) uploadZone.classList.add('drag-over');
+    });
+    uploadZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+    });
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        if (!isConverting && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    // 粘贴
+    document.addEventListener('paste', (e) => {
+        if (isConverting) return;
+        const items = e.clipboardData?.items;
+        if (items) {
+            for (const item of items) {
+                if (item.kind === 'file') {
+                    handleFile(item.getAsFile());
+                    break;
+                }
+            }
+        }
+    });
+
+    audioFormat.addEventListener('change', updateBitrateVisibility);
+    convertBtn.addEventListener('click', convert);
+
+    // 引擎预热
+    window.addEventListener('load', () => {
+        setTimeout(loadFFmpeg, 500);
+    });
+</script>
+</body>
+</html>
