@@ -839,22 +839,31 @@
         // =============================================================
         async function loadFFmpeg() {
             if (ffmpeg) return ffmpeg;
-
+            
             try {
                 setStatus('⏳ 正在加载 FFmpeg 核心 (~30MB) …', '');
                 setProgress(5, '⏳ 加载 FFmpeg 引擎 …');
-
+                
                 ffmpeg = new FFmpeg();
 
-                // 使用 CDN 加载核心
+        // 使用 jsdelivr CDN 镜像，且选择 umd 版本（单线程专用）
                 const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
-                await ffmpeg.load({
-                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-                });
 
+                await ffmpeg.load({
+                    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+                    singleThread: true,   // 🔥 关键：禁用多线程，绕过跨域和 SharedArrayBuffer
+                    });
+                
                 setProgress(20, '✅ FFmpeg 引擎就绪');
                 setStatus('✅ FFmpeg 加载完成', 'success');
+                return ffmpeg;
+            } catch (err) {
+                console.error('FFmpeg 加载失败:', err);
+                setStatus('❌ FFmpeg 加载失败: ' + err.message, 'error');
+                throw err; // 让调用方知道加载失败
+            }
+        }
 
                 // 监听进度日志
                 ffmpeg.on('log', ({ message }) => {
